@@ -103,6 +103,12 @@ var T = {
         micErr:'Microphone and camera are required: check your browser permissions.',
         transDown:'Translation briefly interrupted: retrying…', you:'You', them:'Guest', gerryOn:'Gerry joined the meeting', gerryOff:'Gerry left' },
 };
+// Le voci sono le STESSE dell'app (gerrySettings.GERRY_VOICES): Gerry deve
+// suonare come te lo aspetti, non come una voce a caso.
+var GERRY_VOICES=[['Puck','Puck · vivace'],['Charon','Charon · profonda'],['Orus','Orus · decisa'],
+  ['Fenrir','Fenrir · energica'],['Kore','Kore · calda'],['Aoede','Aoede · brillante'],
+  ['Leda','Leda · giovane'],['Zephyr','Zephyr · morbida']];
+function gerryVoice(){ try{ return localStorage.getItem('meet:gerryVoice') || 'Puck'; }catch(e){ return 'Puck'; } }
 var LANGS = [
   ['it','Italiano'],['en','English'],['es','Español'],['fr','Français'],['de','Deutsch'],
   ['pt-BR','Português'],['zh-Hans','中文'],['ja','日本語'],['ar','العربية'],['ru','Русский'],
@@ -230,12 +236,6 @@ function startTranslate(){
 }
 
 // ————— Gerry in riunione (essenziale: sente la stanza, parla a tutti) —————
-// Le voci sono le STESSE dell'app (gerrySettings.GERRY_VOICES): Gerry deve
-// suonare come te lo aspetti, non come una voce a caso.
-var GERRY_VOICES=[['Puck','Puck · vivace'],['Charon','Charon · profonda'],['Orus','Orus · decisa'],
-  ['Fenrir','Fenrir · energica'],['Kore','Kore · calda'],['Aoede','Aoede · brillante'],
-  ['Leda','Leda · giovane'],['Zephyr','Zephyr · morbida']];
-function gerryVoice(){ try{ return localStorage.getItem('meet:gerryVoice') || 'Puck'; }catch(e){ return 'Puck'; } }
 var gerrySubEl=null, gerrySubTxt='';
 function startGerry(){
   var keys=session.gerry.keys||[]; if(!keys.length) return;
