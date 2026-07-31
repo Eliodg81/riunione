@@ -346,15 +346,35 @@ $('joinBtn').onclick = async function(){
     if(iOffer && !offered && pc.signalingState==='stable' && !makingOffer){
       offered=true; makingOffer=true;
       var opts = (pc.connectionState==='failed'||pc.connectionState==='disconnected') ? {iceRestart:true} : {};
+      dlog('offro'+(opts.iceRestart?' (riavvio rete)':''));
       pc.createOffer(opts).then(function(o){ return pc.setLocalDescription(o); })
         .then(function(){ chan.send({type:'broadcast', event:'sdp', payload:{from:myId, to:peerId, desc:pc.localDescription}}); })
-        .catch(function(){ offered=false; })
+        .catch(function(e){ offered=false; dlog('offerta fallita: '+e); })
         .finally(function(){ makingOffer=false; });
+    } else if(!iOffer){
+      dlog('aspetto offerta da '+peerId.slice(0,8));
     }
   }
+  // GUARDIANO: se dopo 10s dall'incontro non siamo agganciati, si RIPROVA da
+  // capo (nuova offerta con riavvio della rete). Senza, una stretta di mano
+  // persa lasciava "Collegamento…" per sempre.
+  setInterval(function(){
+    if(!alive || !peerId) return;
+    var st=pc.connectionState;
+    if(st==='connected') return;
+    dlog('guardiano: stato='+st+' segnalazione='+pc.signalingState);
+    if(pc.signalingState!=='stable') return;   // trattativa in corso: non disturbare
+    offered=false;
+    considerNegotiation();
+  }, 10000);
+  // Finestrella di diagnosi: senza questa lo stato della chiamata era invisibile
+  // dall'esterno e i guasti si potevano solo indovinare.
+  window.__meet={pc:pc, get peer(){return peerId;}, get offered(){return offered;}, myId:myId, log:[]};
+  function dlog(m){ try{ window.__meet.log.push(new Date().toLocaleTimeString()+' '+m); }catch(e){} }
+
   chan.on('broadcast', {event:'hello'}, function(msg){
     var d=msg.payload; if(!d || d.from===myId) return;
-    if(peerId!==d.from){ peerId=d.from; offered=false; }
+    if(peerId!==d.from){ peerId=d.from; offered=false; dlog('peer '+d.from.slice(0,8)); }
     chan.send({type:'broadcast', event:'hello-ack', payload:{from:myId, to:d.from}});
     considerNegotiation();
   });
@@ -373,13 +393,18 @@ $('joinBtn').onclick = async function(){
     if(d.to && d.to!==myId) return;
     if(peerId!==d.from){ peerId=d.from; }
     var desc=d.desc;
+    dlog('ricevuto '+desc.type);
     if(desc.type==='offer'){
-      pc.setRemoteDescription(desc)
+      // Se stavo offrendo anch'io (scontro di offerte), faccio marcia indietro:
+      // uno dei due deve cedere, se no restano bloccati a fissarsi.
+      var rollback = (pc.signalingState!=='stable') ? pc.setLocalDescription({type:'rollback'}).catch(function(){}) : Promise.resolve();
+      rollback
+        .then(function(){ return pc.setRemoteDescription(desc); })
         .then(function(){ flushIce(); return pc.createAnswer(); })
         .then(function(a){ return pc.setLocalDescription(a); })
-        .then(function(){ chan.send({type:'broadcast', event:'sdp', payload:{from:myId, to:d.from, desc:pc.localDescription}}); })
-        .catch(function(){});
-    } else { pc.setRemoteDescription(desc).then(flushIce).catch(function(){}); }
+        .then(function(){ offered=false; chan.send({type:'broadcast', event:'sdp', payload:{from:myId, to:d.from, desc:pc.localDescription}}); dlog('risposto'); })
+        .catch(function(e){ dlog('risposta fallita: '+e); });
+    } else { pc.setRemoteDescription(desc).then(flushIce).then(function(){dlog('risposta accettata');}).catch(function(e){dlog('accetta risposta fallita: '+e);}); }
   });
   chan.on('broadcast', {event:'ice'}, function(msg){
     var d=msg.payload; if(d.from===myId) return;
