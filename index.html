@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GloboUp — Riunione</title>
+<style>
+  :root { --bg:#0c1220; --card:#151d30; --line:#26304a; --txt:#eef2f8; --mut:#93a0b8;
+          --green:#22c55e; --green2:#16a34a; --blue:#3b82f6; --red:#ef4444; --amber:#f59e0b; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { height:100%; }
+  body { background:var(--bg); color:var(--txt); font:15px/1.45 -apple-system,'Segoe UI',Roboto,sans-serif; }
+  .wrap { max-width:1100px; margin:0 auto; height:100%; display:flex; flex-direction:column; padding:14px; }
+  .brand { display:flex; align-items:center; gap:10px; padding:4px 2px 12px; }
+  .globe { width:30px; height:30px; border-radius:50%;
+           background: radial-gradient(circle at 35% 35%, #4ea1ff 0%, #1c64c9 55%, #0b3a80 100%); box-shadow:0 0 14px rgba(60,140,255,.45); }
+  .brand b { font-size:17px; letter-spacing:.2px; }
+  .brand span { color:var(--mut); font-size:13px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:22px; max-width:430px; margin:8vh auto 0; width:100%; }
+  .card h1 { font-size:19px; margin-bottom:4px; }
+  .card p.sub { color:var(--mut); font-size:13.5px; margin-bottom:16px; }
+  label { display:block; font-size:12.5px; color:var(--mut); margin:12px 0 5px; }
+  input, select { width:100%; background:#0e1526; color:var(--txt); border:1px solid var(--line); border-radius:9px; padding:11px 12px; font-size:15px; outline:none; }
+  input:focus, select:focus { border-color:var(--blue); }
+  button.main { width:100%; margin-top:18px; background:var(--green2); color:#fff; border:0; border-radius:10px; padding:13px; font-size:15.5px; font-weight:700; cursor:pointer; }
+  button.main:disabled { opacity:.55; cursor:default; }
+  .err { color:#fda4af; font-size:13.5px; margin-top:12px; min-height:18px; }
+  .call { display:none; flex:1; min-height:0; flex-direction:column; gap:10px; }
+  .stage { position:relative; flex:1; min-height:0; background:#000; border-radius:14px; overflow:hidden; border:1px solid var(--line); }
+  video.remote { width:100%; height:100%; object-fit:cover; }
+  video.local { position:absolute; right:12px; top:12px; width:150px; max-width:26vw; border-radius:10px; border:1px solid rgba(255,255,255,.25); background:#111; }
+  .status { position:absolute; left:12px; top:12px; background:rgba(8,12,24,.72); border:1px solid var(--line); padding:6px 11px; border-radius:999px; font-size:12.5px; display:flex; align-items:center; gap:7px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--amber); }
+  .subs { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 14px; max-height:200px; min-height:96px; overflow-y:auto; font-size:14.5px; }
+  .subs .orig  { color:var(--mut); font-size:13px; }
+  .subs .trad  { color:#d7fbe3; margin-bottom:8px; }
+  .subs .gerry { color:#bfd7ff; margin-bottom:8px; }
+  .subs .who { font-weight:700; font-size:11.5px; letter-spacing:.4px; color:var(--mut); text-transform:uppercase; }
+  .bar { display:flex; gap:8px; flex-wrap:wrap; }
+  .bar button { flex:1; min-width:100px; background:#1a2338; color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:11px 8px; font-size:13.5px; font-weight:600; cursor:pointer; }
+  .bar button.on { background:#173225; border-color:var(--green); color:#c9f7d8; }
+  .bar button.warn { background:#33202a; border-color:var(--red); color:#ffd4d4; }
+  .bar button.gerry.on { background:#1b2942; border-color:var(--blue); color:#cfe1ff; }
+  .foot { color:var(--mut); font-size:11.5px; text-align:center; padding:4px 0 2px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand"><div class="globe"></div><div><b>GloboUp</b> <span id="brandSub">Riunione con traduzione dal vivo</span></div></div>
+
+  <div class="card" id="entry">
+    <h1 id="tTitle">Entra nella riunione</h1>
+    <p class="sub" id="tSub">Nessuna installazione: scegli nome e lingua, e sei dentro.</p>
+    <label id="lName">Il tuo nome</label>
+    <input id="name" maxlength="40" autocomplete="name">
+    <label id="lLang">La tua lingua (ascolterai tutto tradotto in questa lingua)</label>
+    <select id="lang"></select>
+    <button class="main" id="joinBtn">Entra</button>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div class="call" id="call">
+    <div class="stage">
+      <video class="remote" id="remoteV" autoplay playsinline muted></video>
+      <video class="local" id="localV" autoplay playsinline muted></video>
+      <div class="status"><div class="dot" id="dot"></div><span id="statusTxt">…</span></div>
+    </div>
+    <div class="subs" id="subs"></div>
+    <div class="bar">
+      <button id="micBtn"  class="on">Microfono</button>
+      <button id="camBtn"  class="on">Camera</button>
+      <button id="gerryBtn" class="gerry">Gerry</button>
+      <button id="origBtn">Voce originale: sottofondo</button>
+      <button id="byeBtn"  class="warn">Esci</button>
+    </div>
+    <div class="foot" id="tFoot">La voce dell'altro ti arriva tradotta nella tua lingua, con i sottotitoli qui sopra.</div>
+  </div>
+</div>
+
+<script type="module">
+import {createClient} from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+
+// ————— testi in due lingue (la pagina segue la lingua scelta) —————
+var T = {
+  it: { title:'Entra nella riunione', sub:'Nessuna installazione: scegli nome e lingua, e sei dentro.',
+        name:'Il tuo nome', lang:'La tua lingua (ascolterai tutto tradotto in questa lingua)', join:'Entra',
+        waiting:'In attesa dell\'altro partecipante…', connecting:'Collegamento…', live:'In riunione',
+        reconn:'Riconnessione…', ended:'Riunione terminata', mic:'Microfono', cam:'Camera',
+        orig0:'Voce originale: sottofondo', orig1:'Voce originale: spenta', orig2:'Voce originale: piena',
+        bye:'Esci', foot:'La voce dell\'altro ti arriva tradotta nella tua lingua, con i sottotitoli qui sopra.',
+        badLink:'Link non valido o scaduto. Chiedi un nuovo link a chi ti ha invitato.',
+        micErr:'Servono microfono e camera: controlla i permessi del browser.',
+        transDown:'Traduzione momentaneamente interrotta: riprovo…', you:'Tu', them:'Ospite', gerryOn:'Gerry è in riunione', gerryOff:'Gerry è uscito' },
+  en: { title:'Join the meeting', sub:'Nothing to install: pick your name and language, and you are in.',
+        name:'Your name', lang:'Your language (everything will be translated into it for you)', join:'Join',
+        waiting:'Waiting for the other participant…', connecting:'Connecting…', live:'Live',
+        reconn:'Reconnecting…', ended:'Meeting ended', mic:'Microphone', cam:'Camera',
+        orig0:'Original voice: low', orig1:'Original voice: off', orig2:'Original voice: full',
+        bye:'Leave', foot:'The other person\'s voice reaches you translated into your language, with subtitles above.',
+        badLink:'Invalid or expired link. Ask the person who invited you for a new one.',
+        micErr:'Microphone and camera are required: check your browser permissions.',
+        transDown:'Translation briefly interrupted: retrying…', you:'You', them:'Guest', gerryOn:'Gerry joined the meeting', gerryOff:'Gerry left' },
+};
+var LANGS = [
+  ['it','Italiano'],['en','English'],['es','Español'],['fr','Français'],['de','Deutsch'],
+  ['pt-BR','Português'],['zh-Hans','中文'],['ja','日本語'],['ar','العربية'],['ru','Русский'],
+  ['hi','हिन्दी'],['tr','Türkçe'],['pl','Polski'],['nl','Nederlands'],['uk','Українська'],
+  ['ro','Română'],['el','Ελληνικά'],['sv','Svenska'],['cs','Čeština'],['ko','한국어'],
+];
+
+var SUPA_URL = 'https://xcpsdnkaqqtegjyubstg.supabase.co', ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhjcHNkbmthcXF0ZWdqeXVic3RnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU1MDE3MDcsImV4cCI6MjA2MTA3NzcwN30.kLUwi5L2kSAIj9_GMheoa_YREGuH7sItX7l6_7oF-9A';
+var qs = new URLSearchParams(location.search);
+var CODE = (qs.get('room') || '').trim();
+var supa = createClient(SUPA_URL, ANON);
+var $ = function(id){ return document.getElementById(id); };
+
+var langSel = $('lang');
+LANGS.forEach(function(l){ var o=document.createElement('option'); o.value=l[0]; o.textContent=l[1]; langSel.appendChild(o); });
+var nav = (navigator.language||'en').toLowerCase();
+langSel.value = nav.indexOf('it')===0 ? 'it' : (LANGS.some(function(l){return l[0]===nav.slice(0,2);}) ? nav.slice(0,2) : 'en');
+
+var L = T.en;
+function applyTexts(){
+  L = (langSel.value==='it') ? T.it : T.en;
+  $('tTitle').textContent=L.title; $('tSub').textContent=L.sub; $('lName').textContent=L.name;
+  $('lLang').textContent=L.lang; $('joinBtn').textContent=L.join; $('micBtn').textContent=L.mic;
+  $('camBtn').textContent=L.cam; $('byeBtn').textContent=L.bye; $('tFoot').textContent=L.foot;
+  $('origBtn').textContent=[L.orig0,L.orig1,L.orig2][origMode];
+}
+langSel.onchange = applyTexts;
+
+// ————— stato —————
+var session=null, pc=null, chan=null, myId=crypto.randomUUID();
+var ctx=null, micStream=null, outDest=null, gerryGain=null, origGain=null;
+var transWS=null, gerryWS=null, gerryOn=false, alive=false, polite=false, makingOffer=false;
+var origMode=0; // 0 sottofondo, 1 spenta, 2 piena
+var playCursor=0, gerryCursor=0;
+applyTexts();
+
+function setStatus(txt, color){ $('statusTxt').textContent=txt; $('dot').style.background=color; }
+function subLine(cls, who, text){
+  var box=$('subs');
+  var el=document.createElement('div'); el.className=cls;
+  el.innerHTML='<span class="who"></span> ';
+  el.querySelector('.who').textContent=who;
+  el.appendChild(document.createTextNode(text));
+  box.appendChild(el);
+  while (box.children.length>80) box.removeChild(box.firstChild);
+  box.scrollTop=box.scrollHeight;
+  return el;
+}
+
+// ————— audio: contesto a 24 kHz, stesso formato del telefono —————
+var CAP_WORKLET = URL.createObjectURL(new Blob([
+  'class Cap extends AudioWorkletProcessor{process(i){var c=i[0]&&i[0][0];if(c)this.port.postMessage(c.slice(0));return true}}registerProcessor("cap",Cap);'
+], {type:'application/javascript'}));
+
+function f32toB64(f32arr){
+  var i16=new Int16Array(f32arr.length);
+  for(var i=0;i<f32arr.length;i++){ var s=Math.max(-1,Math.min(1,f32arr[i])); i16[i]=s<0?s*0x8000:s*0x7fff; }
+  var u8=new Uint8Array(i16.buffer), bin='';
+  for(var j=0;j<u8.length;j+=8192) bin+=String.fromCharCode.apply(null,u8.subarray(j,j+8192));
+  return btoa(bin);
+}
+function b64toF32(b64){
+  var bin=atob(b64), u8=new Uint8Array(bin.length);
+  for(var i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
+  var i16=new Int16Array(u8.buffer), f32=new Float32Array(i16.length);
+  for(var j=0;j<i16.length;j++) f32[j]=i16[j]/32768;
+  return f32;
+}
+function playPCM(b64, gainNode, isGerry){
+  var f32=b64toF32(b64);
+  var buf=ctx.createBuffer(1,f32.length,24000);
+  buf.getChannelData(0).set(f32);
+  var src=ctx.createBufferSource(); src.buffer=buf; src.connect(gainNode);
+  var now=ctx.currentTime;
+  var cur=isGerry?gerryCursor:playCursor;
+  var at=Math.max(now+0.04, cur);
+  src.start(at);
+  if(isGerry) gerryCursor=at+buf.duration; else playCursor=at+buf.duration;
+}
+
+// ————— motore di traduzione (stesso protocollo del telefono) —————
+function GeminiWS(key, model, setupExtra, cb){
+  var ws=new WebSocket('wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key='+encodeURIComponent(key));
+  ws.binaryType='arraybuffer';
+  var ready=false, self={ws:ws, send:function(pcmB64){ if(ready&&ws.readyState===1) ws.send(JSON.stringify({realtimeInput:{audio:{mimeType:'audio/pcm;rate=24000', data:pcmB64}}})); }, stop:function(){ try{ws.close();}catch(e){} }};
+  ws.onopen=function(){
+    var setup={model:model, generationConfig:{responseModalities:['AUDIO']}, inputAudioTranscription:{}, outputAudioTranscription:{}};
+    for(var k in setupExtra){
+      if(k==='translationConfig') setup.generationConfig.translationConfig=setupExtra[k];
+      else setup[k]=setupExtra[k];
+    }
+    ws.send(JSON.stringify({setup:setup}));
+  };
+  ws.onmessage=function(ev){
+    var text = (typeof ev.data==='string') ? ev.data : new TextDecoder().decode(new Uint8Array(ev.data));
+    var m; try{ m=JSON.parse(text);}catch(e){return;}
+    if(m.setupComplete){ ready=true; cb.onReady&&cb.onReady(); return; }
+    var sc=m.serverContent; if(!sc) return;
+    if(sc.inputTranscription&&sc.inputTranscription.text) cb.onIn&&cb.onIn(sc.inputTranscription.text);
+    if(sc.outputTranscription&&sc.outputTranscription.text) cb.onOut&&cb.onOut(sc.outputTranscription.text);
+    var parts=(sc.modelTurn&&sc.modelTurn.parts)||[];
+    for(var i=0;i<parts.length;i++){ var d=parts[i].inlineData&&parts[i].inlineData.data; if(d) cb.onAudio&&cb.onAudio(d); }
+  };
+  ws.onclose=function(){ cb.onClose&&cb.onClose(); };
+  ws.onerror=function(){};
+  return self;
+}
+
+// La traduzione di ciò che ARRIVA: si riavvia da sola finché la riunione è viva.
+var transOrigEl=null, transTradEl=null, transOrigTxt='', transTradTxt='';
+function startTranslate(){
+  if(!alive||!session) return;
+  transWS=GeminiWS(session.translate.key, session.translate.model,
+    {translationConfig:{targetLanguageCode:langSel.value, echoTargetLanguage:true}},
+    { onAudio:function(d){ playPCM(d, transGain, false); },
+      onIn:function(t){ transOrigTxt=(transOrigTxt+t).slice(-400); if(!transOrigEl) transOrigEl=subLine('orig', L.them, ''); transOrigEl.lastChild.nodeValue=transOrigTxt; $('subs').scrollTop=1e9; },
+      onOut:function(t){ transTradTxt=(transTradTxt+t).slice(-400); if(!transTradEl) transTradEl=subLine('trad','→',''); transTradEl.lastChild.nodeValue=transTradTxt; $('subs').scrollTop=1e9;
+                         if(transTradTxt.length>=380){transOrigEl=null;transTradEl=null;transOrigTxt='';transTradTxt='';} },
+      onClose:function(){ if(alive){ setStatus(L.transDown,'#f59e0b'); setTimeout(startTranslate,1500); } } });
+}
+
+// ————— Gerry in riunione (essenziale: sente la stanza, parla a tutti) —————
+var gerrySubEl=null, gerrySubTxt='';
+function startGerry(){
+  var keys=session.gerry.keys||[]; if(!keys.length) return;
+  var persona='Sei Gerry, l\'assistente vocale di GloboUp, presente come partecipante in una riunione di lavoro. '+
+    'Senti tutte le voci della stanza (lingue diverse). REGOLE: parla SOLO quando qualcuno si rivolge a te chiamandoti per nome ("Gerry"); '+
+    'per il resto stai in silenzio assoluto. Rispondi nella lingua di chi ti ha chiamato, in modo breve e professionale. '+
+    'Se ti chiedono di tradurre o riassumere qualcosa appena detto, fallo. Non inventare: se non sai, dillo.';
+  gerryWS=GeminiWS(keys[0], session.gerry.model,
+    {systemInstruction:{parts:[{text:persona}]}},
+    { onReady:function(){ subLine('gerry','GERRY', langSel.value==='it'?'sono in riunione, chiamami per nome se ti serve.':'I am in the meeting, call my name if you need me.'); },
+      onAudio:function(d){ playPCM(d, gerryGain, true); },
+      onOut:function(t){ gerrySubTxt=(gerrySubTxt+t).slice(-400); if(!gerrySubEl) gerrySubEl=subLine('gerry','GERRY',''); gerrySubEl.lastChild.nodeValue=gerrySubTxt;
+                         if(gerrySubTxt.length>=380){gerrySubEl=null;gerrySubTxt='';} },
+      onClose:function(){ if(gerryOn){ gerryOn=false; $('gerryBtn').classList.remove('on'); subLine('gerry','GERRY',L.gerryOff); } } });
+}
+
+// ————— ingresso —————
+$('joinBtn').onclick = async function(){
+  var name=($('name').value||'').trim(); if(!name){ $('name').focus(); return; }
+  $('joinBtn').disabled=true; $('err').textContent='';
+  try {
+    var r=await fetch('https://xcpsdnkaqqtegjyubstg.supabase.co/functions/v1/meet', {method:'POST', headers:{'Content-Type':'application/json','apikey':ANON,'Authorization':'Bearer '+ANON}, body:JSON.stringify({op:'join', code:CODE})});
+    var j=await r.json();
+    if(!j.ok){ $('err').textContent=L.badLink; $('joinBtn').disabled=false; return; }
+    session=j;
+  } catch(e){ $('err').textContent=L.badLink; $('joinBtn').disabled=false; return; }
+
+  try { micStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true, autoGainControl:true}, video:{width:{ideal:1280}, height:{ideal:720}}}); }
+  catch(e){ $('err').textContent=L.micErr; $('joinBtn').disabled=false; return; }
+
+  alive=true;
+  $('entry').style.display='none'; $('call').style.display='flex';
+  setStatus(L.waiting,'#f59e0b');
+  $('localV').srcObject=micStream;
+
+  // grafo audio: 24 kHz come il telefono → niente ricampionamenti
+  ctx=new AudioContext({sampleRate:24000});
+  try{ await ctx.resume(); }catch(e){}
+  await ctx.audioWorklet.addModule(CAP_WORKLET);
+  var micSrc=ctx.createMediaStreamSource(micStream);
+  outDest=ctx.createMediaStreamDestination();
+  micSrc.connect(outDest);                       // la mia voce esce verso l'altro
+  gerryGain=ctx.createGain(); gerryGain.gain.value=1;
+  gerryGain.connect(ctx.destination);            // Gerry lo sento io…
+  gerryGain.connect(outDest);                    // …e lo sente anche l'altro
+  window.transGain=ctx.createGain(); transGain.gain.value=1;
+  transGain.connect(ctx.destination);            // la voce tradotta la sento solo io
+  origGain=ctx.createGain(); origGain.gain.value=0.12;
+  origGain.connect(ctx.destination);             // voce originale in sottofondo
+
+  // ciò che dico io va anche a Gerry (quando è acceso)
+  var roomTap=new AudioWorkletNode(ctx,'cap');
+  micSrc.connect(roomTap);
+  var acc=[];
+  roomTap.port.onmessage=function(ev){
+    if(!gerryOn||!gerryWS) return;
+    acc.push(ev.data); var n=0; for(var i=0;i<acc.length;i++) n+=acc[i].length;
+    if(n>=1920){ var all=new Float32Array(n),o=0; for(var i2=0;i2<acc.length;i2++){all.set(acc[i2],o);o+=acc[i2].length;} acc=[]; gerryWS.send(f32toB64(all)); }
+  };
+
+  // ————— WebRTC + segnalazione su Supabase Realtime —————
+  pc=new RTCPeerConnection({iceServers:[
+    {urls:'stun:stun.l.google.com:19302'},
+    {urls:'stun:stun1.l.google.com:19302'},
+    {urls:'stun:stun.cloudflare.com:3478'},
+    {urls:'turn:openrelay.metered.ca:80', username:'openrelayproject', credential:'openrelayproject'},
+    {urls:'turn:openrelay.metered.ca:443', username:'openrelayproject', credential:'openrelayproject'},
+    {urls:'turn:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject'},
+  ]});
+  var vTrack=micStream.getVideoTracks()[0];
+  if(vTrack) pc.addTrack(vTrack, micStream);
+  pc.addTrack(outDest.stream.getAudioTracks()[0], outDest.stream); // audio = mic + Gerry
+
+  pc.ontrack=function(ev){
+    var st=ev.streams[0]; if(!st) return;
+    $('remoteV').srcObject=st;                    // muto: l'audio passa dal grafo
+    if(ev.track.kind==='audio'){
+      var remSrc=ctx.createMediaStreamSource(new MediaStream([ev.track]));
+      remSrc.connect(origGain);
+      var remTap=new AudioWorkletNode(ctx,'cap');
+      remSrc.connect(remTap);
+      var racc=[];
+      remTap.port.onmessage=function(e2){
+        racc.push(e2.data); var n=0; for(var i=0;i<racc.length;i++) n+=racc[i].length;
+        if(n>=1920){ var all=new Float32Array(n),o=0; for(var i2=0;i2<racc.length;i2++){all.set(racc[i2],o);o+=racc[i2].length;} racc=[];
+          var b=f32toB64(all);
+          if(transWS) transWS.send(b);
+          if(gerryOn&&gerryWS) gerryWS.send(b);   // Gerry sente anche l'altro
+        }
+      };
+      startTranslate();
+    }
+  };
+  pc.onicecandidate=function(ev){ if(ev.candidate&&chan) chan.send({type:'broadcast', event:'ice', payload:{from:myId, cand:ev.candidate}}); };
+  pc.onconnectionstatechange=function(){
+    var s=pc.connectionState;
+    if(s==='connected'){ setStatus(L.live,'#22c55e'); }
+    else if(s==='disconnected'||s==='failed'){ setStatus(L.reconn,'#f59e0b'); if(s==='failed'){ try{pc.restartIce();}catch(e){} } }
+  };
+
+  chan=supa.channel('meet-'+CODE, {config:{presence:{key:myId}, broadcast:{self:false}}});
+  chan.on('presence', {event:'sync'}, function(){
+    var ids=Object.keys(chan.presenceState()).sort();
+    if(ids.length>=2){
+      // Ruoli deterministici: il primo id in ordine alfabetico ASPETTA l'offerta,
+      // l'altro la crea. Uno e uno solo offre: niente scontri di offerte.
+      polite = (ids[0]===myId);
+      if(!polite && pc.signalingState==='stable' && !makingOffer){
+        makingOffer=true;
+        pc.createOffer().then(function(o){ return pc.setLocalDescription(o); })
+          .then(function(){ chan.send({type:'broadcast', event:'sdp', payload:{from:myId, desc:pc.localDescription}}); })
+          .finally(function(){ makingOffer=false; });
+      }
+      if(pc.connectionState!=='connected') setStatus(L.connecting,'#f59e0b');
+    } else setStatus(L.waiting,'#f59e0b');
+  });
+  // I candidati di rete possono arrivare PRIMA della descrizione remota: si
+  // mettono in coda e si consegnano appena la descrizione c'è — buttarli via
+  // significava chiamate che a volte non si agganciavano.
+  var pendingIce=[];
+  function flushIce(){ while(pendingIce.length){ pc.addIceCandidate(pendingIce.shift()).catch(function(){}); } }
+  chan.on('broadcast', {event:'sdp'}, function(msg){
+    var d=msg.payload; if(d.from===myId) return;
+    var desc=d.desc;
+    if(desc.type==='offer'){
+      pc.setRemoteDescription(desc)
+        .then(function(){ flushIce(); return pc.createAnswer(); })
+        .then(function(a){ return pc.setLocalDescription(a); })
+        .then(function(){ chan.send({type:'broadcast', event:'sdp', payload:{from:myId, desc:pc.localDescription}}); })
+        .catch(function(){});
+    } else { pc.setRemoteDescription(desc).then(flushIce).catch(function(){}); }
+  });
+  chan.on('broadcast', {event:'ice'}, function(msg){
+    var d=msg.payload; if(d.from===myId) return;
+    if(!pc.remoteDescription){ pendingIce.push(d.cand); return; }
+    pc.addIceCandidate(d.cand).catch(function(){});
+  });
+  chan.on('broadcast', {event:'bye'}, function(msg){
+    if(msg.payload.from===myId) return;
+    setStatus(L.ended,'#ef4444');
+  });
+  chan.subscribe(function(st){ if(st==='SUBSCRIBED') chan.track({name:name, lang:langSel.value, t:Date.now()}); });
+};
+
+// ————— pulsanti —————
+$('micBtn').onclick=function(){
+  var t=micStream&&micStream.getAudioTracks()[0]; if(!t) return;
+  t.enabled=!t.enabled; this.classList.toggle('on', t.enabled);
+};
+$('camBtn').onclick=function(){
+  var t=micStream&&micStream.getVideoTracks()[0]; if(!t) return;
+  t.enabled=!t.enabled; this.classList.toggle('on', t.enabled);
+};
+$('origBtn').onclick=function(){
+  origMode=(origMode+1)%3;
+  origGain.gain.value=[0.12,0,1][origMode];
+  this.textContent=[L.orig0,L.orig1,L.orig2][origMode];
+};
+$('gerryBtn').onclick=function(){
+  if(!session) return;
+  gerryOn=!gerryOn;
+  this.classList.toggle('on', gerryOn);
+  if(gerryOn){ startGerry(); }
+  else { if(gerryWS){ gerryWS.stop(); gerryWS=null; } subLine('gerry','GERRY',L.gerryOff); }
+};
+$('byeBtn').onclick=function(){
+  alive=false;
+  try{ chan&&chan.send({type:'broadcast', event:'bye', payload:{from:myId}}); }catch(e){}
+  try{ transWS&&transWS.stop(); }catch(e){}
+  try{ gerryWS&&gerryWS.stop(); }catch(e){}
+  try{ pc&&pc.close(); }catch(e){}
+  try{ micStream&&micStream.getTracks().forEach(function(t){t.stop();}); }catch(e){}
+  try{ ctx&&ctx.close(); }catch(e){}
+  location.reload();
+};
+window.addEventListener('beforeunload', function(){ try{ chan&&chan.send({type:'broadcast', event:'bye', payload:{from:myId}}); }catch(e){} });
+
+if(!CODE){ $('err').textContent='?room=CODICE mancante'; $('joinBtn').disabled=true; }
+</script>
+</body>
+</html>
