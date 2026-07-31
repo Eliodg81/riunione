@@ -323,21 +323,36 @@ $('joinBtn').onclick = async function(){
     else if(s==='disconnected'||s==='failed'){ setStatus(L.reconn,'#f59e0b'); if(s==='failed'){ try{pc.restartIce();}catch(e){} } }
   };
 
-  chan=supa.channel('meet-'+CODE, {config:{presence:{key:myId}, broadcast:{self:false}}});
-  chan.on('presence', {event:'sync'}, function(){
-    var ids=Object.keys(chan.presenceState()).sort();
-    if(ids.length>=2){
-      // Ruoli deterministici: il primo id in ordine alfabetico ASPETTA l'offerta,
-      // l'altro la crea. Uno e uno solo offre: niente scontri di offerte.
-      polite = (ids[0]===myId);
-      if(!polite && pc.signalingState==='stable' && !makingOffer){
-        makingOffer=true;
-        pc.createOffer().then(function(o){ return pc.setLocalDescription(o); })
-          .then(function(){ chan.send({type:'broadcast', event:'sdp', payload:{from:myId, desc:pc.localDescription}}); })
-          .finally(function(){ makingOffer=false; });
-      }
-      if(pc.connectionState!=='connected') setStatus(L.connecting,'#f59e0b');
-    } else setStatus(L.waiting,'#f59e0b');
+  // AGGANCIO SOLO-MESSAGGI. Le presenze di Supabase Realtime su questo progetto
+  // NON si sincronizzano per i clienti anonimi (misurato con la sonda 31/7: due
+  // clienti nella stessa pagina, zero sync; i broadcast invece passano). Quindi:
+  // chi entra dice "ci sono" (hello), chi c'era risponde "eccomi" (hello-ack),
+  // e i ruoli sono deterministici: offre chi ha l'id piu' grande.
+  chan=supa.channel('meet-'+CODE, {config:{broadcast:{self:false}}});
+  var peerId=null, offered=false;
+  function considerNegotiation(){
+    if(!peerId || pc.connectionState==='connected') return;
+    setStatus(L.connecting,'#f59e0b');
+    var iOffer = myId > peerId;
+    if(iOffer && !offered && pc.signalingState==='stable' && !makingOffer){
+      offered=true; makingOffer=true;
+      var opts = (pc.connectionState==='failed'||pc.connectionState==='disconnected') ? {iceRestart:true} : {};
+      pc.createOffer(opts).then(function(o){ return pc.setLocalDescription(o); })
+        .then(function(){ chan.send({type:'broadcast', event:'sdp', payload:{from:myId, to:peerId, desc:pc.localDescription}}); })
+        .catch(function(){ offered=false; })
+        .finally(function(){ makingOffer=false; });
+    }
+  }
+  chan.on('broadcast', {event:'hello'}, function(msg){
+    var d=msg.payload; if(!d || d.from===myId) return;
+    if(peerId!==d.from){ peerId=d.from; offered=false; }
+    chan.send({type:'broadcast', event:'hello-ack', payload:{from:myId, to:d.from}});
+    considerNegotiation();
+  });
+  chan.on('broadcast', {event:'hello-ack'}, function(msg){
+    var d=msg.payload; if(!d || d.from===myId || d.to!==myId) return;
+    if(peerId!==d.from){ peerId=d.from; offered=false; }
+    considerNegotiation();
   });
   // I candidati di rete possono arrivare PRIMA della descrizione remota: si
   // mettono in coda e si consegnano appena la descrizione c'è — buttarli via
@@ -346,12 +361,14 @@ $('joinBtn').onclick = async function(){
   function flushIce(){ while(pendingIce.length){ pc.addIceCandidate(pendingIce.shift()).catch(function(){}); } }
   chan.on('broadcast', {event:'sdp'}, function(msg){
     var d=msg.payload; if(d.from===myId) return;
+    if(d.to && d.to!==myId) return;
+    if(peerId!==d.from){ peerId=d.from; }
     var desc=d.desc;
     if(desc.type==='offer'){
       pc.setRemoteDescription(desc)
         .then(function(){ flushIce(); return pc.createAnswer(); })
         .then(function(a){ return pc.setLocalDescription(a); })
-        .then(function(){ chan.send({type:'broadcast', event:'sdp', payload:{from:myId, desc:pc.localDescription}}); })
+        .then(function(){ chan.send({type:'broadcast', event:'sdp', payload:{from:myId, to:d.from, desc:pc.localDescription}}); })
         .catch(function(){});
     } else { pc.setRemoteDescription(desc).then(flushIce).catch(function(){}); }
   });
@@ -361,10 +378,22 @@ $('joinBtn').onclick = async function(){
     pc.addIceCandidate(d.cand).catch(function(){});
   });
   chan.on('broadcast', {event:'bye'}, function(msg){
-    if(msg.payload.from===myId) return;
-    setStatus(L.ended,'#ef4444');
+    // Conta solo l'uscita del NOSTRO interlocutore: il bye di una vecchia
+    // scheda che si chiude non deve dichiarare morta la riunione.
+    if(msg.payload.from!==peerId) return;
+    peerId=null; offered=false;
+    setStatus(L.waiting,'#f59e0b');
   });
-  chan.subscribe(function(st){ if(st==='SUBSCRIBED') chan.track({name:name, lang:langSel.value, t:Date.now()}); });
+  chan.subscribe(function(st){
+    if(st!=='SUBSCRIBED') return;
+    chan.send({type:'broadcast', event:'hello', payload:{from:myId, name:name}});
+    // Richiamo leggero finche' non c'e' un interlocutore: copre chi entra
+    // quando l'altro non era ancora in ascolto o un messaggio perso.
+    var rehello=setInterval(function(){
+      if(!alive){ clearInterval(rehello); return; }
+      if(!peerId) chan.send({type:'broadcast', event:'hello', payload:{from:myId, name:name}});
+    }, 6000);
+  });
 };
 
 // ————— pulsanti —————
