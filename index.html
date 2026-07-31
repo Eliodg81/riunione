@@ -292,13 +292,22 @@ $('joinBtn').onclick = async function(){
     {urls:'turn:openrelay.metered.ca:443', username:'openrelayproject', credential:'openrelayproject'},
     {urls:'turn:openrelay.metered.ca:443?transport=tcp', username:'openrelayproject', credential:'openrelayproject'},
   ]});
+  // UN SOLO flusso in uscita per video E audio: mandandoli come due flussi
+  // distinti, chi riceve sovrascriveva il video con l'audio arrivato dopo e
+  // vedeva il riquadro NERO (campo 31/7).
+  var outStream=new MediaStream();
   var vTrack=micStream.getVideoTracks()[0];
-  if(vTrack) pc.addTrack(vTrack, micStream);
-  pc.addTrack(outDest.stream.getAudioTracks()[0], outDest.stream); // audio = mic + Gerry
+  if(vTrack) outStream.addTrack(vTrack);
+  outStream.addTrack(outDest.stream.getAudioTracks()[0]); // audio = mic + Gerry
+  outStream.getTracks().forEach(function(t){ pc.addTrack(t, outStream); });
 
+  // Anche in ricezione si ACCUMULA in un flusso unico, invece di rimpiazzarlo.
+  var remoteStream=new MediaStream();
+  $('remoteV').srcObject=remoteStream;
   pc.ontrack=function(ev){
-    var st=ev.streams[0]; if(!st) return;
-    $('remoteV').srcObject=st;                    // muto: l'audio passa dal grafo
+    if(!ev.track) return;
+    remoteStream.addTrack(ev.track);              // muto: l'audio passa dal grafo
+    try{ $('remoteV').play(); }catch(e){}
     if(ev.track.kind==='audio'){
       var remSrc=ctx.createMediaStreamSource(new MediaStream([ev.track]));
       remSrc.connect(origGain);
