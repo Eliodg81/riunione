@@ -48,6 +48,7 @@
                 border-radius:11px; padding:14px; font-size:15.5px; font-weight:700; cursor:pointer; }
   button.main:hover { background:var(--verde); }
   button.main:disabled { opacity:.5; cursor:default; }
+  .nota { font-size:11.5px; color:var(--mut); margin-top:5px; min-height:14px; }
   .err { color:#b91c1c; font-size:13.5px; margin-top:12px; min-height:18px; }
 
   .call { display:none; flex:1; min-height:0; flex-direction:column; gap:10px; }
@@ -102,6 +103,7 @@
     <input id="name" maxlength="40" autocomplete="name">
     <label id="lLang">La tua lingua (ascolterai tutto tradotto in questa lingua)</label>
     <select id="lang"></select>
+    <div id="langNote" class="nota"></div>
     <label id="lVoice">La voce di Gerry</label>
     <select id="voice"></select>
     <button class="main" id="joinBtn">Entra</button>
@@ -137,7 +139,7 @@ var T = {
         reconn:'Riconnessione…', ended:'Riunione terminata', mic:'Microfono', cam:'Camera',
         orig0:'Voce originale: sottofondo', orig1:'Voce originale: spenta', orig2:'Voce originale: piena',
         bye:'Esci', foot:'La voce dell\'altro ti arriva tradotta nella tua lingua, con i sottotitoli qui sopra.',
-        badLink:'Link non valido o scaduto. Chiedi un nuovo link a chi ti ha invitato.',
+        badLink:'Link non valido o scaduto. Chiedi un nuovo link a chi ti ha invitato.', langPreset:'Scelta da chi ti ha invitato — puoi cambiarla.',
         micErr:'Servono microfono e camera: controlla i permessi del browser.',
         transDown:'Traduzione momentaneamente interrotta: riprovo…', you:'Tu', them:'Ospite', noCredit:'Minuti esauriti: la traduzione si ferma qui. Chi ha invitato deve ricaricare il credito.', badCredit:'Chi ti ha invitato non ha minuti disponibili: chiedigli di ricaricare.', gerryOn:'Gerry è in riunione', gerryOff:'Gerry è uscito' },
   en: { title:'Join the meeting', sub:'Nothing to install: pick your name and language, and you are in.',
@@ -146,7 +148,7 @@ var T = {
         reconn:'Reconnecting…', ended:'Meeting ended', mic:'Microphone', cam:'Camera',
         orig0:'Original voice: low', orig1:'Original voice: off', orig2:'Original voice: full',
         bye:'Leave', foot:'The other person\'s voice reaches you translated into your language, with subtitles above.',
-        badLink:'Invalid or expired link. Ask the person who invited you for a new one.',
+        badLink:'Invalid or expired link. Ask the person who invited you for a new one.', langPreset:'Chosen by the person who invited you — you can change it.',
         micErr:'Microphone and camera are required: check your browser permissions.',
         transDown:'Translation briefly interrupted: retrying…', you:'You', them:'Guest', noCredit:'Minutes used up: translation stops here. The host needs to top up.', badCredit:'The person who invited you has no minutes left: ask them to top up.', gerryOn:'Gerry joined the meeting', gerryOff:'Gerry left' },
 };
@@ -175,8 +177,15 @@ var voiceSel = $('voice');
 GERRY_VOICES.forEach(function(v){ var o=document.createElement('option'); o.value=v[0]; o.textContent=v[1]; voiceSel.appendChild(o); });
 voiceSel.value = gerryVoice();
 voiceSel.onchange = function(){ try{ localStorage.setItem('meet:gerryVoice', voiceSel.value); }catch(e){} };
+// LINGUA SUGGERITA DA CHI INVITA (?lang=en). Si preseleziona, ma NON si
+// blocca: se chi invita ha indovinato male, l'ospite deve poter correggere con
+// un tocco, se no la riunione è rovinata. Se il codice non è fra quelli che
+// sappiamo tradurre, si ignora e si torna alla lingua del telefono.
+var langDaLink = (qs.get('lang')||'').trim();
+var langValido = LANGS.some(function(l){ return l[0]===langDaLink; });
 var nav = (navigator.language||'en').toLowerCase();
-langSel.value = nav.indexOf('it')===0 ? 'it' : (LANGS.some(function(l){return l[0]===nav.slice(0,2);}) ? nav.slice(0,2) : 'en');
+langSel.value = langValido ? langDaLink
+  : (nav.indexOf('it')===0 ? 'it' : (LANGS.some(function(l){return l[0]===nav.slice(0,2);}) ? nav.slice(0,2) : 'en'));
 
 var L = T.en;
 function applyTexts(){
@@ -187,7 +196,11 @@ function applyTexts(){
   var gs=$('gerryBtn').querySelector('span'); if(gs) gs.textContent='Gerry'; $('tFoot').textContent=L.foot;
   $('origBtn').textContent=[L.orig0,L.orig1,L.orig2][origMode];
 }
-langSel.onchange = applyTexts;
+function aggiornaNota(){
+  var n=$('langNote');
+  n.textContent = (langValido && langSel.value===langDaLink) ? L.langPreset : '';
+}
+langSel.onchange = function(){ applyTexts(); aggiornaNota(); };
 
 // ————— stato —————
 var session=null, pc=null, chan=null, myId=crypto.randomUUID();
@@ -196,6 +209,7 @@ var transWS=null, gerryWS=null, gerryOn=false, alive=false, polite=false, making
 var origMode=0; // 0 sottofondo, 1 spenta, 2 piena
 var playCursor=0, gerryCursor=0;
 applyTexts();
+aggiornaNota();
 
 function setStatus(txt, color){ $('statusTxt').textContent=txt; $('dot').style.background=color; }
 function subLine(cls, who, text){
