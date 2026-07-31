@@ -18,6 +18,14 @@
           padding-bottom:calc(12px + env(safe-area-inset-bottom));
           padding-left:calc(16px + env(safe-area-inset-left));
           padding-right:calc(16px + env(safe-area-inset-right)); }
+  /* GARANZIA sui telefoni: quando Safari apre la pagina DA UN'ALTRA APP non
+     dichiara l'altezza della barra di stato (env vale 0) e l'intestazione
+     finiva sotto l'ora e la batteria. Qui si prende il valore maggiore fra
+     quello dichiarato e uno scalino sicuro: se il browser dice il vero si usa
+     il suo, altrimenti si usa il nostro. */
+  @media (max-width: 760px) {
+    .wrap { padding-top: max(54px, calc(16px + env(safe-area-inset-top))); }
+  }
   .wrap.incall { height:100%; min-height:0; }
   .brand { display:flex; align-items:center; gap:11px; padding:2px 2px 14px; }
   .brand img { height:38px; width:38px; display:block; }
