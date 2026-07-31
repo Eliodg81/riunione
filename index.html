@@ -126,7 +126,7 @@ var T = {
         bye:'Esci', foot:'La voce dell\'altro ti arriva tradotta nella tua lingua, con i sottotitoli qui sopra.',
         badLink:'Link non valido o scaduto. Chiedi un nuovo link a chi ti ha invitato.',
         micErr:'Servono microfono e camera: controlla i permessi del browser.',
-        transDown:'Traduzione momentaneamente interrotta: riprovo…', you:'Tu', them:'Ospite', gerryOn:'Gerry è in riunione', gerryOff:'Gerry è uscito' },
+        transDown:'Traduzione momentaneamente interrotta: riprovo…', you:'Tu', them:'Ospite', noCredit:'Minuti esauriti: la traduzione si ferma qui. Chi ha invitato deve ricaricare il credito.', badCredit:'Chi ti ha invitato non ha minuti disponibili: chiedigli di ricaricare.', gerryOn:'Gerry è in riunione', gerryOff:'Gerry è uscito' },
   en: { title:'Join the meeting', sub:'Nothing to install: pick your name and language, and you are in.',
         name:'Your name', lang:'Your language (everything will be translated into it for you)', voice:"Gerry's voice", join:'Join',
         waiting:'Waiting for the other participant…', connecting:'Connecting…', live:'Live',
@@ -135,7 +135,7 @@ var T = {
         bye:'Leave', foot:'The other person\'s voice reaches you translated into your language, with subtitles above.',
         badLink:'Invalid or expired link. Ask the person who invited you for a new one.',
         micErr:'Microphone and camera are required: check your browser permissions.',
-        transDown:'Translation briefly interrupted: retrying…', you:'You', them:'Guest', gerryOn:'Gerry joined the meeting', gerryOff:'Gerry left' },
+        transDown:'Translation briefly interrupted: retrying…', you:'You', them:'Guest', noCredit:'Minutes used up: translation stops here. The host needs to top up.', badCredit:'The person who invited you has no minutes left: ask them to top up.', gerryOn:'Gerry joined the meeting', gerryOff:'Gerry left' },
 };
 // Le voci sono le STESSE dell'app (gerrySettings.GERRY_VOICES): Gerry deve
 // suonare come te lo aspetti, non come una voce a caso.
@@ -304,7 +304,7 @@ $('joinBtn').onclick = async function(){
   try {
     var r=await fetch('https://xcpsdnkaqqtegjyubstg.supabase.co/functions/v1/meet', {method:'POST', headers:{'Content-Type':'application/json','apikey':ANON,'Authorization':'Bearer '+ANON}, body:JSON.stringify({op:'join', code:CODE})});
     var j=await r.json();
-    if(!j.ok){ $('err').textContent=L.badLink; $('joinBtn').disabled=false; return; }
+    if(!j.ok){ $('err').textContent = (j.error==='credito_esaurito') ? L.badCredit : L.badLink; $('joinBtn').disabled=false; return; }
     session=j;
   } catch(e){ $('err').textContent=L.badLink; $('joinBtn').disabled=false; return; }
 
@@ -477,6 +477,26 @@ $('joinBtn').onclick = async function(){
     peerId=null; offered=false;
     setStatus(L.waiting,'#f59e0b');
   });
+  // CONTATORE: ogni minuto di riunione viene addebitato a CHI HA CREATO IL
+  // LINK. Parte solo a collegamento avvenuto (non mentre si aspetta l'altro) e
+  // si ferma da sé quando i minuti finiscono, dicendolo invece di tacere.
+  var billTimer=setInterval(function(){
+    if(!alive || pc.connectionState!=='connected') return;
+    fetch('https://xcpsdnkaqqtegjyubstg.supabase.co/functions/v1/meet', {method:'POST', headers:{'Content-Type':'application/json','apikey':ANON,'Authorization':'Bearer '+ANON},
+      body:JSON.stringify({op:'tick', code:CODE, minutes:1})})
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if(j && j.ok===false){
+          clearInterval(billTimer);
+          subLine('gerry','GLOBOUP', L.noCredit);
+          try{ transWS&&transWS.stop(); transWS=null; }catch(e){}
+          try{ if(gerryWS){ gerryWS.stop(); gerryWS=null; gerryOn=false; $('gerryBtn').classList.remove('on'); } }catch(e){}
+          alive=false;   // niente riavvii automatici della traduzione
+        }
+      })
+      .catch(function(){});
+  }, 60000);
+
   chan.subscribe(function(st){
     if(st!=='SUBSCRIBED') return;
     chan.send({type:'broadcast', event:'hello', payload:{from:myId, name:name}});
@@ -512,6 +532,7 @@ $('gerryBtn').onclick=function(){
 };
 $('byeBtn').onclick=function(){
   alive=false;
+  try{ clearInterval(billTimer); }catch(e){}
   try{ chan&&chan.send({type:'broadcast', event:'bye', payload:{from:myId}}); }catch(e){}
   try{ transWS&&transWS.stop(); }catch(e){}
   try{ gerryWS&&gerryWS.stop(); }catch(e){}
