@@ -27,7 +27,7 @@
   .err { color:#fda4af; font-size:13.5px; margin-top:12px; min-height:18px; }
   .call { display:none; flex:1; min-height:0; flex-direction:column; gap:10px; }
   .stage { position:relative; flex:1; min-height:0; background:#000; border-radius:14px; overflow:hidden; border:1px solid var(--line); }
-  video.remote { width:100%; height:100%; object-fit:cover; }
+  video.remote { width:100%; height:100%; object-fit:contain; background:#000; }
   video.local { position:absolute; right:12px; top:12px; width:150px; max-width:26vw; border-radius:10px; border:1px solid rgba(255,255,255,.25); background:#111; }
   .status { position:absolute; left:12px; top:12px; background:rgba(8,12,24,.72); border:1px solid var(--line); padding:6px 11px; border-radius:999px; font-size:12.5px; display:flex; align-items:center; gap:7px; }
   .dot { width:8px; height:8px; border-radius:50%; background:var(--amber); }
@@ -55,6 +55,8 @@
     <input id="name" maxlength="40" autocomplete="name">
     <label id="lLang">La tua lingua (ascolterai tutto tradotto in questa lingua)</label>
     <select id="lang"></select>
+    <label id="lVoice">La voce di Gerry</label>
+    <select id="voice"></select>
     <button class="main" id="joinBtn">Entra</button>
     <div class="err" id="err"></div>
   </div>
@@ -83,7 +85,7 @@ import {createClient} from 'https://esm.sh/@supabase/supabase-js@2.45.0';
 // ————— testi in due lingue (la pagina segue la lingua scelta) —————
 var T = {
   it: { title:'Entra nella riunione', sub:'Nessuna installazione: scegli nome e lingua, e sei dentro.',
-        name:'Il tuo nome', lang:'La tua lingua (ascolterai tutto tradotto in questa lingua)', join:'Entra',
+        name:'Il tuo nome', lang:'La tua lingua (ascolterai tutto tradotto in questa lingua)', voice:'La voce di Gerry', join:'Entra',
         waiting:'In attesa dell\'altro partecipante…', connecting:'Collegamento…', live:'In riunione',
         reconn:'Riconnessione…', ended:'Riunione terminata', mic:'Microfono', cam:'Camera',
         orig0:'Voce originale: sottofondo', orig1:'Voce originale: spenta', orig2:'Voce originale: piena',
@@ -92,7 +94,7 @@ var T = {
         micErr:'Servono microfono e camera: controlla i permessi del browser.',
         transDown:'Traduzione momentaneamente interrotta: riprovo…', you:'Tu', them:'Ospite', gerryOn:'Gerry è in riunione', gerryOff:'Gerry è uscito' },
   en: { title:'Join the meeting', sub:'Nothing to install: pick your name and language, and you are in.',
-        name:'Your name', lang:'Your language (everything will be translated into it for you)', join:'Join',
+        name:'Your name', lang:'Your language (everything will be translated into it for you)', voice:"Gerry's voice", join:'Join',
         waiting:'Waiting for the other participant…', connecting:'Connecting…', live:'Live',
         reconn:'Reconnecting…', ended:'Meeting ended', mic:'Microphone', cam:'Camera',
         orig0:'Original voice: low', orig1:'Original voice: off', orig2:'Original voice: full',
@@ -116,6 +118,10 @@ var $ = function(id){ return document.getElementById(id); };
 
 var langSel = $('lang');
 LANGS.forEach(function(l){ var o=document.createElement('option'); o.value=l[0]; o.textContent=l[1]; langSel.appendChild(o); });
+var voiceSel = $('voice');
+GERRY_VOICES.forEach(function(v){ var o=document.createElement('option'); o.value=v[0]; o.textContent=v[1]; voiceSel.appendChild(o); });
+voiceSel.value = gerryVoice();
+voiceSel.onchange = function(){ try{ localStorage.setItem('meet:gerryVoice', voiceSel.value); }catch(e){} };
 var nav = (navigator.language||'en').toLowerCase();
 langSel.value = nav.indexOf('it')===0 ? 'it' : (LANGS.some(function(l){return l[0]===nav.slice(0,2);}) ? nav.slice(0,2) : 'en');
 
@@ -123,7 +129,7 @@ var L = T.en;
 function applyTexts(){
   L = (langSel.value==='it') ? T.it : T.en;
   $('tTitle').textContent=L.title; $('tSub').textContent=L.sub; $('lName').textContent=L.name;
-  $('lLang').textContent=L.lang; $('joinBtn').textContent=L.join; $('micBtn').textContent=L.mic;
+  $('lLang').textContent=L.lang; $('lVoice').textContent=L.voice; $('joinBtn').textContent=L.join; $('micBtn').textContent=L.mic;
   $('camBtn').textContent=L.cam; $('byeBtn').textContent=L.bye; $('tFoot').textContent=L.foot;
   $('origBtn').textContent=[L.orig0,L.orig1,L.orig2][origMode];
 }
@@ -190,6 +196,7 @@ function GeminiWS(key, model, setupExtra, cb){
     var setup={model:model, generationConfig:{responseModalities:['AUDIO']}, inputAudioTranscription:{}, outputAudioTranscription:{}};
     for(var k in setupExtra){
       if(k==='translationConfig') setup.generationConfig.translationConfig=setupExtra[k];
+      else if(k==='speechConfig') setup.generationConfig.speechConfig=setupExtra[k];
       else setup[k]=setupExtra[k];
     }
     ws.send(JSON.stringify({setup:setup}));
@@ -223,6 +230,12 @@ function startTranslate(){
 }
 
 // ————— Gerry in riunione (essenziale: sente la stanza, parla a tutti) —————
+// Le voci sono le STESSE dell'app (gerrySettings.GERRY_VOICES): Gerry deve
+// suonare come te lo aspetti, non come una voce a caso.
+var GERRY_VOICES=[['Puck','Puck · vivace'],['Charon','Charon · profonda'],['Orus','Orus · decisa'],
+  ['Fenrir','Fenrir · energica'],['Kore','Kore · calda'],['Aoede','Aoede · brillante'],
+  ['Leda','Leda · giovane'],['Zephyr','Zephyr · morbida']];
+function gerryVoice(){ try{ return localStorage.getItem('meet:gerryVoice') || 'Puck'; }catch(e){ return 'Puck'; } }
 var gerrySubEl=null, gerrySubTxt='';
 function startGerry(){
   var keys=session.gerry.keys||[]; if(!keys.length) return;
@@ -230,8 +243,12 @@ function startGerry(){
     'Senti tutte le voci della stanza (lingue diverse). REGOLE: parla SOLO quando qualcuno si rivolge a te chiamandoti per nome ("Gerry"); '+
     'per il resto stai in silenzio assoluto. Rispondi nella lingua di chi ti ha chiamato, in modo breve e professionale. '+
     'Se ti chiedono di tradurre o riassumere qualcosa appena detto, fallo. Non inventare: se non sai, dillo.';
+  // La VOCE di Gerry: la stessa dell'app (una sola voce fissa ovunque, cosi'
+  // Gerry suona sempre come se stesso). Si sceglie dal menu qui sotto e resta
+  // memorizzata nel browser.
   gerryWS=GeminiWS(keys[0], session.gerry.model,
-    {systemInstruction:{parts:[{text:persona}]}},
+    {systemInstruction:{parts:[{text:persona}]},
+     speechConfig:{voiceConfig:{prebuiltVoiceConfig:{voiceName:gerryVoice()}}}},
     { onReady:function(){ subLine('gerry','GERRY', langSel.value==='it'?'sono in riunione, chiamami per nome se ti serve.':'I am in the meeting, call my name if you need me.'); },
       onAudio:function(d){ playPCM(d, gerryGain, true); },
       onOut:function(t){ gerrySubTxt=(gerrySubTxt+t).slice(-400); if(!gerrySubEl) gerrySubEl=subLine('gerry','GERRY',''); gerrySubEl.lastChild.nodeValue=gerrySubTxt;
